@@ -1,0 +1,568 @@
+<title>N Scale Reducer — prototype feet to model millimetres</title>
+<style>
+  /* ---- Light palette: complete definition lives here on bare :root ---- */
+  :root {
+    --ground:      #E9EDF0;
+    --surface:     #FDFEFE;
+    --surface-2:   #F1F4F6;
+    --ink:         #141C25;
+    --ink-2:       #46586A;
+    --ink-3:       #7C8D9C;
+    --rule:        #CBD5DD;
+    --rule-strong: #A9B7C2;
+    --brass:       #9A6E14;
+    --brass-bright:#B8862F;
+    --brass-wash:  #F5EEDD;
+    --signal:      #1F6B4C;
+    --signal-wash: #E2F0E9;
+
+    --shadow: 0 1px 2px rgba(20,28,37,.06), 0 8px 24px -12px rgba(20,28,37,.18);
+
+    --f-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+              "Helvetica Neue", Arial, sans-serif;
+    --f-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+              "Liberation Mono", monospace;
+  }
+
+  /* System-dark, but only when the viewer hasn't explicitly chosen light */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:      #0E141A;
+      --surface:     #161E27;
+      --surface-2:   #1D2731;
+      --ink:         #E6ECF2;
+      --ink-2:       #A3B3C1;
+      --ink-3:       #71828F;
+      --rule:        #2A3742;
+      --rule-strong: #3E4E5B;
+      --brass:       #D9A648;
+      --brass-bright:#E9BC63;
+      --brass-wash:  #26200F;
+      --signal:      #55C295;
+      --signal-wash: #10241C;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+    }
+  }
+  /* Explicit dark choice wins in the other direction */
+  :root[data-theme="dark"] {
+    --ground:      #0E141A;
+    --surface:     #161E27;
+    --surface-2:   #1D2731;
+    --ink:         #E6ECF2;
+    --ink-2:       #A3B3C1;
+    --ink-3:       #71828F;
+    --rule:        #2A3742;
+    --rule-strong: #3E4E5B;
+    --brass:       #D9A648;
+    --brass-bright:#E9BC63;
+    --brass-wash:  #26200F;
+    --signal:      #55C295;
+    --signal-wash: #10241C;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--f-sans);
+    font-size: 16px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 60rem;
+    margin: 0 auto;
+    padding: clamp(1.25rem, 3vw, 2.5rem) clamp(1rem, 3vw, 2rem) 4rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  /* ---- Masthead ---- */
+  header { display: flex; flex-direction: column; gap: .5rem; }
+
+  .eyebrow {
+    font-family: var(--f-mono);
+    font-size: .6875rem;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--brass);
+    display: flex; align-items: center; gap: .6rem;
+  }
+  .eyebrow::after {
+    content: ""; flex: 1; height: 1px; background: var(--rule);
+  }
+
+  h1 {
+    margin: 0;
+    font-size: clamp(1.5rem, 3.5vw, 2.125rem);
+    font-weight: 650;
+    letter-spacing: -.022em;
+    text-wrap: balance;
+  }
+
+  .standfirst {
+    margin: 0; max-width: 58ch;
+    color: var(--ink-2); font-size: .9375rem;
+  }
+
+  /* ---- Scale-rule tick motif: the one flourish ---- */
+  .rule-strip {
+    height: 22px;
+    background:
+      repeating-linear-gradient(to right,
+        var(--rule-strong) 0 1px, transparent 1px 10px),
+      repeating-linear-gradient(to right,
+        var(--brass) 0 1.5px, transparent 1.5px 50px);
+    background-size: 100% 8px, 100% 14px;
+    background-position: 0 100%, 0 100%;
+    background-repeat: repeat-x;
+    opacity: .75;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  /* ---- Panels ---- */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    box-shadow: var(--shadow);
+  }
+
+  .panel-head {
+    padding: .75rem 1rem;
+    border-bottom: 1px solid var(--rule);
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 1rem; flex-wrap: wrap;
+  }
+  .panel-title {
+    font-family: var(--f-mono);
+    font-size: .6875rem; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--ink-3);
+  }
+
+  /* ---- Input row ---- */
+  .inputs {
+    padding: 1rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+    gap: 1rem;
+  }
+
+  .field { display: flex; flex-direction: column; gap: .375rem; }
+
+  label {
+    font-size: .75rem; font-weight: 600; letter-spacing: .04em;
+    color: var(--ink-2); text-transform: uppercase;
+  }
+
+  input[type="number"], select {
+    font-family: var(--f-mono);
+    font-size: 1.125rem;
+    font-variant-numeric: tabular-nums;
+    padding: .5rem .625rem;
+    color: var(--ink);
+    background: var(--surface-2);
+    border: 1px solid var(--rule-strong);
+    border-radius: 3px;
+    width: 100%;
+    min-width: 0;
+  }
+  select { font-size: .9375rem; }
+
+  input[type="number"]:focus-visible,
+  select:focus-visible,
+  button:focus-visible {
+    outline: 2px solid var(--brass-bright);
+    outline-offset: 2px;
+  }
+
+  .hint { font-size: .75rem; color: var(--ink-3); }
+
+  /* ---- Readout ---- */
+  .readout {
+    padding: 1.25rem 1rem 1.375rem;
+    background: var(--surface-2);
+    border-top: 1px solid var(--rule);
+    display: flex; align-items: flex-end; justify-content: space-between;
+    gap: 1rem; flex-wrap: wrap;
+  }
+  .readout-main { display: flex; flex-direction: column; gap: .125rem; }
+  .readout-label {
+    font-family: var(--f-mono); font-size: .6875rem;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3);
+  }
+  .readout-value {
+    font-family: var(--f-mono);
+    font-size: clamp(2.25rem, 7vw, 3.5rem);
+    font-weight: 600;
+    line-height: 1.05;
+    letter-spacing: -.02em;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+  }
+  .readout-value .unit {
+    font-size: .375em; font-weight: 500; color: var(--ink-3);
+    letter-spacing: .04em; margin-left: .3rem;
+  }
+
+  .secondary {
+    display: flex; gap: 1.25rem; flex-wrap: wrap;
+    font-family: var(--f-mono); font-size: .8125rem;
+    font-variant-numeric: tabular-nums; color: var(--ink-2);
+  }
+  .secondary b { color: var(--ink); font-weight: 600; }
+
+  button {
+    font-family: var(--f-sans);
+    font-size: .8125rem; font-weight: 600;
+    letter-spacing: .02em;
+    padding: .5rem .875rem;
+    color: var(--surface);
+    background: var(--brass);
+    border: 1px solid var(--brass);
+    border-radius: 3px;
+    cursor: pointer;
+  }
+  button:hover { background: var(--brass-bright); border-color: var(--brass-bright); }
+  button.ghost {
+    background: transparent; color: var(--ink-2); border-color: var(--rule-strong);
+  }
+  button.ghost:hover { color: var(--ink); border-color: var(--ink-3); background: transparent; }
+  button[aria-pressed="true"] {
+    background: var(--brass); color: var(--surface); border-color: var(--brass);
+  }
+
+  .seg { display: flex; gap: .375rem; flex-wrap: wrap; }
+
+  /* ---- Gauge check ---- */
+  .check {
+    display: flex; align-items: center; gap: .75rem;
+    padding: .75rem 1rem;
+    background: var(--signal-wash);
+    border-top: 1px solid var(--rule);
+    font-size: .875rem; color: var(--ink-2);
+    flex-wrap: wrap;
+  }
+  .dot {
+    width: .5rem; height: .5rem; border-radius: 50%;
+    background: var(--signal); flex: none;
+  }
+  .check b { font-family: var(--f-mono); color: var(--ink); font-variant-numeric: tabular-nums; }
+
+  /* ---- Reference table ---- */
+  .table-scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: .875rem; }
+  th, td { text-align: left; padding: .5rem 1rem; border-bottom: 1px solid var(--rule); }
+  th {
+    font-family: var(--f-mono); font-size: .6875rem; font-weight: 500;
+    letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3);
+    white-space: nowrap;
+  }
+  td.num {
+    font-family: var(--f-mono); font-variant-numeric: tabular-nums;
+    white-space: nowrap; color: var(--ink);
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: var(--surface-2); }
+
+  footer {
+    font-size: .8125rem; color: var(--ink-3);
+    border-top: 1px solid var(--rule); padding-top: 1rem;
+  }
+  footer code {
+    font-family: var(--f-mono); font-size: .9em;
+    background: var(--surface-2); padding: .1em .35em; border-radius: 2px;
+    color: var(--ink-2);
+  }
+  a { color: var(--brass); }
+
+  .toast {
+    position: fixed; bottom: 1.25rem; left: 50%; transform: translateX(-50%);
+    background: var(--ink); color: var(--ground);
+    font-size: .8125rem; font-weight: 600;
+    padding: .5rem .875rem; border-radius: 3px;
+    opacity: 0; pointer-events: none; transition: opacity .18s ease;
+  }
+  .toast.show { opacity: 1; }
+  @media (prefers-reduced-motion: reduce) {
+    .toast { transition: none; }
+  }
+</style>
+
+<div class="rule-strip" aria-hidden="true"></div>
+
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">N Scale · 9 mm gauge</div>
+    <h1>Prototype feet to model millimetres</h1>
+    <p class="standfirst">
+      Enter a real-world dimension; get the number to draw in CAD. Set to the
+      NMRA standard, 1 : 160 — the other definitions are one click away, and
+      they disagree by about half a millimetre over a fifty-foot car.
+    </p>
+  </header>
+
+  <!-- ============ CALCULATOR ============ -->
+  <section class="panel">
+    <div class="panel-head">
+      <span class="panel-title">Convert</span>
+      <div class="seg" role="group" aria-label="Conversion direction">
+        <button type="button" class="ghost" id="dir-down" aria-pressed="true">Prototype → model</button>
+        <button type="button" class="ghost" id="dir-up" aria-pressed="false">Model → prototype</button>
+      </div>
+    </div>
+
+    <!-- prototype → model -->
+    <div class="inputs" id="pane-down">
+      <div class="field">
+        <label for="ft">Feet</label>
+        <input type="number" id="ft" value="40" step="any" inputmode="decimal">
+        <span class="hint">Decimals fine — 12.5 works</span>
+      </div>
+      <div class="field">
+        <label for="in">Inches</label>
+        <input type="number" id="in" value="0" step="any" inputmode="decimal">
+        <span class="hint">Added to the feet above</span>
+      </div>
+      <div class="field">
+        <label for="scale">Ratio</label>
+        <select id="scale">
+          <option value="160" selected>1 : 160 — NMRA N</option>
+          <option value="159.44444444444446">1 : 159.44 — 9 mm : 1435 mm exact</option>
+          <option value="159">1 : 159 — rounded</option>
+          <option value="148">1 : 148 — British N</option>
+          <option value="150">1 : 150 — Japanese N</option>
+          <option value="custom">Custom…</option>
+        </select>
+        <span class="hint" id="scale-hint">1 ft = 1.905000 mm</span>
+      </div>
+      <div class="field" id="custom-field" hidden>
+        <label for="custom">Custom divisor</label>
+        <input type="number" id="custom" value="159.44" step="any" inputmode="decimal">
+        <span class="hint">The 160 in 1:160</span>
+      </div>
+      <div class="field">
+        <label for="dp">Decimals</label>
+        <select id="dp">
+          <option value="2">2 — 0.01 mm</option>
+          <option value="3" selected>3 — 0.001 mm</option>
+          <option value="4">4 — 0.0001 mm</option>
+        </select>
+        <span class="hint">Rounding in the readout only</span>
+      </div>
+    </div>
+
+    <!-- model → prototype -->
+    <div class="inputs" id="pane-up" hidden>
+      <div class="field">
+        <label for="mm">Model millimetres</label>
+        <input type="number" id="mm" value="76.20" step="any" inputmode="decimal">
+        <span class="hint">Measured off the model or the drawing</span>
+      </div>
+    </div>
+
+    <div class="readout">
+      <div class="readout-main">
+        <span class="readout-label" id="out-label">Model dimension</span>
+        <span class="readout-value" id="out"><span id="out-num">76.200</span><span class="unit" id="out-unit">mm</span></span>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:.625rem; align-items:flex-end;">
+        <div class="secondary" id="secondary"></div>
+        <button type="button" id="copy">Copy value</button>
+      </div>
+    </div>
+
+    <div class="check">
+      <span class="dot" aria-hidden="true"></span>
+      <span>
+        Sanity check — standard gauge <b>4 ft 8½ in</b> reduces to
+        <b id="gauge">8.969</b> mm at this ratio.
+        <span id="gauge-note" style="color:var(--ink-3)"></span>
+      </span>
+    </div>
+  </section>
+
+  <!-- ============ REFERENCE ============ -->
+  <section class="panel">
+    <div class="panel-head">
+      <span class="panel-title">Common prototype dimensions</span>
+      <span class="hint" id="ref-ratio">at 1 : 160</span>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Item</th>
+            <th scope="col">Prototype</th>
+            <th scope="col">Model</th>
+          </tr>
+        </thead>
+        <tbody id="ref"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    <p style="margin:0 0 .5rem">
+      <strong>Why the gauge check reads under 9 mm.</strong> NMRA N is defined
+      as 1 : 160, but the track it runs on is 9 mm between the rails. Reduce real
+      standard gauge by 160 and you get 8.969 mm — so N track is very slightly
+      wide for its own scale, which is the long-standing compromise the standard
+      accepts. Dividing 1435 by 9 instead gives 1 : 159.44, offered above for
+      anyone who wants the gauge to come out exact. For parts that sit alongside
+      bought stock, stay on 160.
+    </p>
+    <p style="margin:0">
+      Exact inputs: <code>1 ft = 304.8 mm</code>, <code>1 in = 25.4 mm</code>.
+      Standard gauge is defined as 1435 mm, while 4 ft 8½ in works out to
+      1435.1 mm — which is why the check above reads a thousandth over 9.
+    </p>
+  </footer>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite">Copied</div>
+
+<script>
+  var MM_FT = 304.8, MM_IN = 25.4;
+
+  var el = function (id) { return document.getElementById(id); };
+  var ft = el('ft'), inch = el('in'), mm = el('mm'),
+      scale = el('scale'), custom = el('custom'), customField = el('custom-field'),
+      dp = el('dp'), out = el('out-num'), outUnit = el('out-unit'),
+      outLabel = el('out-label'), secondary = el('secondary'),
+      gauge = el('gauge'), gaugeNote = el('gauge-note'),
+      refBody = el('ref'), refRatio = el('ref-ratio'), scaleHint = el('scale-hint'),
+      paneDown = el('pane-down'), paneUp = el('pane-up'),
+      dirDown = el('dir-down'), dirUp = el('dir-up'), toast = el('toast');
+
+  var reverse = false;
+
+  var REF = [
+    ['Standard gauge (rail to rail)', 4, 8.5],
+    ['40 ft boxcar', 40, 0],
+    ['50 ft flatcar', 50, 0],
+    ['89 ft auto rack', 89, 0],
+    ['Freight car height (rail to roof)', 15, 6],
+    ['Doorway', 6, 8],
+    ['Storey height', 10, 0],
+    ['Telegraph pole', 35, 0],
+    ['Track centres (tangent)', 13, 0]
+  ];
+
+  function divisor() {
+    if (scale.value === 'custom') {
+      var c = parseFloat(custom.value);
+      return (isFinite(c) && c > 0) ? c : 160;
+    }
+    return parseFloat(scale.value);
+  }
+
+  function places() { return parseInt(dp.value, 10); }
+
+  function num(v) {
+    var n = parseFloat(v);
+    return isFinite(n) ? n : 0;
+  }
+
+  function fmt(v, p) {
+    return v.toLocaleString(undefined, {
+      minimumFractionDigits: p, maximumFractionDigits: p
+    });
+  }
+
+  // prototype feet+inches -> mm on the prototype
+  function protoMM() { return num(ft.value) * MM_FT + num(inch.value) * MM_IN; }
+
+  function render() {
+    var d = divisor(), p = places();
+
+    scaleHint.textContent = '1 ft = ' + (MM_FT / d).toFixed(6) + ' mm';
+    refRatio.textContent = 'at 1 : ' + (Math.round(d * 100) / 100);
+
+    if (!reverse) {
+      var model = protoMM() / d;
+      out.textContent = fmt(model, p);
+      outUnit.textContent = 'mm';
+      outLabel.textContent = 'Model dimension';
+      secondary.innerHTML =
+        '<span><b>' + fmt(model / 10, Math.max(p - 1, 1)) + '</b> cm</span>' +
+        '<span><b>' + fmt(model / MM_IN, p) + '</b> in</span>' +
+        '<span><b>' + fmt(protoMM(), 1) + '</b> mm full size</span>';
+    } else {
+      var proto = num(mm.value) * d;
+      var totalFt = proto / MM_FT;
+      var whole = Math.floor(totalFt);
+      // Round the inches to the precision actually displayed BEFORE deciding
+      // whether they carry. Testing against the raw value lets 11.99937 slip
+      // through and render as the impossible 39′ 12.00″.
+      var remIn = Math.round((totalFt - whole) * 12 * 100) / 100;
+      if (remIn >= 12) { whole += 1; remIn = 0; }
+      out.textContent = whole + "′ " + remIn.toFixed(2) + '″';
+      outUnit.textContent = '';
+      outLabel.textContent = 'Prototype dimension';
+      secondary.innerHTML =
+        '<span><b>' + fmt(totalFt, 3) + '</b> ft decimal</span>' +
+        '<span><b>' + fmt(proto / 1000, 3) + '</b> m full size</span>';
+    }
+
+    var g = (4 * MM_FT + 8.5 * MM_IN) / d;
+    gauge.textContent = g.toFixed(3);
+    var delta = g - 9;
+    gaugeNote.textContent = Math.abs(delta) < 0.0005
+      ? ' Dead on 9 mm.'
+      : ' (' + (delta > 0 ? '+' : '') + delta.toFixed(3) + ' mm vs the 9 mm gauge)';
+
+    var rows = '';
+    for (var i = 0; i < REF.length; i++) {
+      var r = REF[i];
+      var pm = r[1] * MM_FT + r[2] * MM_IN;
+      var label = r[1] + ' ft' + (r[2] ? ' ' + r[2] + ' in' : '');
+      rows += '<tr><td>' + r[0] + '</td>' +
+              '<td class="num">' + label + '</td>' +
+              '<td class="num">' + (pm / d).toFixed(2) + ' mm</td></tr>';
+    }
+    refBody.innerHTML = rows;
+  }
+
+  function setDirection(rev) {
+    reverse = rev;
+    paneDown.hidden = rev;
+    paneUp.hidden = !rev;
+    dirDown.setAttribute('aria-pressed', String(!rev));
+    dirUp.setAttribute('aria-pressed', String(rev));
+    render();
+  }
+
+  dirDown.addEventListener('click', function () { setDirection(false); });
+  dirUp.addEventListener('click', function () { setDirection(true); });
+
+  scale.addEventListener('change', function () {
+    var isCustom = scale.value === 'custom';
+    customField.hidden = !isCustom;
+    if (isCustom) { custom.focus(); custom.select(); }
+    render();
+  });
+
+  [ft, inch, mm, custom, dp].forEach(function (n) {
+    n.addEventListener('input', render);
+  });
+
+  el('copy').addEventListener('click', function () {
+    var text = out.textContent + (outUnit.textContent ? ' ' + outUnit.textContent : '');
+    var done = function () {
+      toast.classList.add('show');
+      setTimeout(function () { toast.classList.remove('show'); }, 1200);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, done);
+    } else { done(); }
+  });
+
+  render();
+</script>

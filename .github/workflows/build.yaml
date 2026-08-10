@@ -1,0 +1,150 @@
+# Image build pipeline for nscale-calc.
+#
+# Mirrors tor-dice-docker (in-cluster ARC runner + Infisical secrets +
+# Harbor push), minus its Go/Svelte stages — this image is stock
+# nginx-unprivileged plus one self-contained HTML file, so there is
+# nothing to compile.
+#
+# Prerequisite: the `nscale-calc-docker-runner` ARC scale set must be
+# provisioned via dvystrcil/argocd-projects:arc/arc-build-runners.yaml.
+
+name: build
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '*.md'
+      - 'LICENSE'
+      - '.github/CODEOWNERS'
+  pull_request:
+  workflow_dispatch:
+
+env:
+  INTERNAL_REGISTRY: harbor-core.harbor.svc.cluster.local
+  PROJECT: ai
+  IMAGE_NAME: nscale-calc
+
+jobs:
+  # Build the image and actually serve from it before pushing anything.
+  # A broken COPY path or a bad nginx config produces a green "docker
+  # build" and a container that 404s or crash-loops, so assert on real
+  # responses rather than on the build exiting 0.
+  smoke:
+    runs-on: nscale-calc-docker-runner
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build image locally
+        run: docker build -t nscale-calc:ci .
+
+      - name: Serve under the pod's security constraints
+        run: |
+          set -euo pipefail
+          # Same constraints the Deployment applies: read-only root, /tmp
+          # emptyDir, non-root uid 1000, all capabilities dropped.
+          docker run -d --name ci \
+            --read-only --tmpfs /tmp \
+            --user 1000:1000 --cap-drop ALL \
+            -p 18080:8080 nscale-calc:ci
+          for i in $(seq 1 30); do
+            if curl -sf -o /dev/null http://127.0.0.1:18080/healthz; then break; fi
+            sleep 1
+          done
+
+          code=$(curl -sL -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/)
+          hops=$(curl -sL -o /dev/null -w '%{num_redirects}' http://127.0.0.1:18080/healthz)
+          [ "$code" = "200" ] || { echo "::error::/ returned $code"; docker logs ci; exit 1; }
+          # Probes follow redirects; a redirecting /healthz would mean the
+          # kubelet tests whatever it lands on instead (homelab#820).
+          [ "$hops" = "0" ] || { echo "::error::/healthz redirects ($hops hops)"; exit 1; }
+
+          # The page must actually be the calculator, not nginx's default
+          # index — an empty or wrong COPY would still serve a 200.
+          curl -s http://127.0.0.1:18080/ | grep -q 'N Scale' \
+            || { echo "::error::served page is not the calculator"; exit 1; }
+
+          docker rm -f ci
+          echo "SMOKE-COMPLETE"
+
+  build:
+    needs: smoke
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: nscale-calc-docker-runner
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Fetch secrets from Infisical
+        uses: Infisical/secrets-action@v1.0.16
+        with:
+          client-id: ${{ secrets.INFISICAL_CLIENT_ID }}
+          client-secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
+          env-slug: prod
+          project-slug: homelab-bz-gt
+          secret-path: /
+          export-type: env
+          domain: http://infisical-infisical-standalone-infisical.infisical.svc.cluster.local:8080
+
+      - name: Log in to Harbor (internal)
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.INTERNAL_REGISTRY }}
+          username: ${{ env.HB_USERNAME }}
+          password: ${{ env.HB_PASSWORD }}
+
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          client-id: ${{ env.CICD_APP_CLIENT_ID }}
+          private-key: ${{ env.CICD_APP_PRIVATE_KEY }}
+
+      - uses: docker/setup-qemu-action@v4
+
+      - uses: docker/setup-buildx-action@v4
+        with:
+          buildkitd-config-inline: |
+            [registry."harbor-core.harbor.svc.cluster.local"]
+              ca=["/etc/ssl/certs/ca-certificates.crt"]
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.INTERNAL_REGISTRY }}/${{ env.PROJECT }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=dev
+            type=sha,prefix=sha-
+
+      - name: Build + push (dev image)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.INTERNAL_REGISTRY }}/${{ env.PROJECT }}/${{ env.IMAGE_NAME }}:buildcache
+          cache-to: type=registry,ref=${{ env.INTERNAL_REGISTRY }}/${{ env.PROJECT }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
+
+      - name: Summary
+        run: |
+          echo "Built: ${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "release-action cuts a patch-bump GitHub release next, which" >> $GITHUB_STEP_SUMMARY
+          echo "triggers docker-release.yaml to retag Harbor :dev as :X.Y.Z." >> $GITHUB_STEP_SUMMARY
+          echo "image-updater (in dvystrcil/nscale-calc) writes the new tag" >> $GITHUB_STEP_SUMMARY
+          echo "back to overlays/kustomization.yaml." >> $GITHUB_STEP_SUMMARY
+
+      - name: Create GitHub release
+        # Patch++ off the latest release; publishing fires
+        # docker-release.yaml, which retags Harbor :dev as :X.Y.Z — no
+        # `v` prefix on image tags, per the homelab convention.
+        uses: dvystrcil/release-action@v0.1.1
+        with:
+          token: ${{ steps.app-token.outputs.token }}
