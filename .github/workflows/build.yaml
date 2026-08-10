@@ -66,6 +66,15 @@ jobs:
           curl -s http://127.0.0.1:18080/ | grep -q 'N Scale' \
             || { echo "::error::served page is not the calculator"; exit 1; }
 
+          # UTF-8, asserted two ways. Without a charset the browser guesses
+          # Latin-1 and "Prototype → model" renders as "Prototype â†' model",
+          # which is a 200 with correct bytes — invisible to every check
+          # above. Shipped exactly that way on the first release.
+          curl -sI http://127.0.0.1:18080/ | tr -d '\r' | grep -qi 'content-type:.*charset=utf-8' \
+            || { echo "::error::Content-Type is missing charset=utf-8"; exit 1; }
+          curl -s http://127.0.0.1:18080/ | grep -q 'Prototype → model' \
+            || { echo "::error::UTF-8 round trip failed — arrow did not survive"; exit 1; }
+
           docker rm -f ci
           echo "SMOKE-COMPLETE"
 
