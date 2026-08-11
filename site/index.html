@@ -414,6 +414,30 @@
     </div>
   </section>
 
+  <!-- ============ CROSS-SCALE ============ -->
+  <section class="panel">
+    <div class="panel-head">
+      <span class="panel-title">Scaling between scales</span>
+      <span class="hint">multiply a <b>row</b> dimension to get the <b>column</b></span>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr id="matrix-head"></tr></thead>
+        <tbody id="matrix"></tbody>
+      </table>
+    </div>
+    <div class="check" style="background:var(--surface-2)">
+      <span class="dot" style="background:var(--brass)" aria-hidden="true"></span>
+      <span>
+        Ratios: G 1:22.5 · O 1:48 · HO 1:87.1 · N 1:160 · Z 1:220. Two don't
+        reduce standard gauge cleanly, and it isn't an error — <b>O</b> runs on
+        32 mm track where 1:48 wants 29.9, over-gauge since tinplate; <b>G</b> is
+        1:22.5 because it models <b>metre-gauge</b> prototypes on 45 mm
+        Gauge&nbsp;1 track. HO, N and Z land within 0.03 mm of their real track.
+      </span>
+    </div>
+  </section>
+
   <footer>
     <p style="margin:0 0 .5rem">
       <strong>Why the gauge check reads under 9 mm.</strong> NMRA N is defined
@@ -484,6 +508,33 @@
 
   // prototype feet+inches -> mm on the prototype
   function protoMM() { return num(ft.value) * MM_FT + num(inch.value) * MM_IN; }
+
+  var SCALES = [
+    ["G",  22.5],
+    ["O",  48.0],
+    ["HO", 87.1],
+    ["N",  160.0],
+    ["Z",  220.0]
+  ];
+
+  // Static ratios — built once, not recomputed on every keystroke.
+  function renderMatrix() {
+    var head = '<th scope="col">from \u2572 to</th>';
+    for (var j = 0; j < SCALES.length; j++) head += '<th scope="col">' + SCALES[j][0] + '</th>';
+    document.getElementById("matrix-head").innerHTML = head;
+
+    var m = "";
+    for (var a = 0; a < SCALES.length; a++) {
+      m += '<tr><td><b>' + SCALES[a][0] + '</b> <span style="color:var(--ink-3)">1:' + SCALES[a][1] + '</span></td>';
+      for (var b = 0; b < SCALES.length; b++) {
+        var f = SCALES[a][1] / SCALES[b][1];
+        m += '<td class="num"' + (a === b ? ' style="color:var(--ink-3)"' : '') + '>' +
+             f.toFixed(4) + '</td>';
+      }
+      m += '</tr>';
+    }
+    document.getElementById("matrix").innerHTML = m;
+  }
 
   function render() {
     var d = divisor(), p = places();
@@ -570,6 +621,7 @@
     } else { done(); }
   });
 
+  renderMatrix();
   render();
 </script>
 
