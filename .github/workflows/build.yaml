@@ -160,6 +160,6 @@ jobs:
         # docker-release.yaml, which retags Harbor :dev as :X.Y.Z — no
         # `v` prefix on image tags, per the homelab convention.
         if: github.event_name != 'workflow_dispatch' || inputs.release
-        uses: dvystrcil/release-action@v0.1.1
+        uses: dvystrcil/release-action@v0.2.1
         with:
           token: ${{ steps.app-token.outputs.token }}
