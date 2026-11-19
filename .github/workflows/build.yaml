@@ -35,8 +35,10 @@ jobs:
   # A broken COPY path or a bad nginx config produces a green "docker
   # build" and a container that 404s or crash-loops, so assert on real
   # responses rather than on the build exiting 0.
+  # Needs no secret or cluster access, so it runs on a GitHub-hosted runner
+  # (homelab#2377); `build` below stays on the ARC runner.
   smoke:
-    runs-on: nscale-calc-docker-runner
+    runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
